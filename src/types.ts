@@ -125,6 +125,17 @@ export interface GalleryItem {
   layout: string;
 }
 
+// ─── Draft (saved editing session) ───────────────────────────────────────────
+export interface DraftItem {
+  id: string;
+  thumbnail: string;
+  layoutName: string;
+  layoutId: string;
+  photoCount: number;
+  savedAt: number;
+  state: EditorState;
+}
+
 // ─── App State ────────────────────────────────────────────────────────────────
 export type AppStep = 'home' | 'layout' | 'photobooth' | 'editor' | 'download' | 'gallery';
 
@@ -134,6 +145,8 @@ export interface AppState {
   capturedPhotos: string[];
   editorState: EditorState | null;
   finalImageUrl: string | null;
+  resumeDraftId: string | null;
+  resumeEditorState: EditorState | null;
 }
 
 // ─── History ──────────────────────────────────────────────────────────────────

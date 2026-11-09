@@ -1,5 +1,5 @@
-import type { EditorState, StickerItem, TextItem } from '../types';
-import { FILTERS } from '../data/filters';
+import type { EditorState } from '../types';
+import { buildPhotoFilter } from './filterUtils';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -17,22 +17,9 @@ function applyFilterToCanvas(
   ctx: CanvasRenderingContext2D,
   filterId: string,
   intensity: number,
-  adjustments: EditorState['adjustments'],
-  width: number,
-  height: number
+  adjustments: EditorState['adjustments']
 ): void {
-  const filter = FILTERS.find(f => f.id === filterId);
-  const filterStr = filter?.canvasFilter ?? '';
-  const { brightness, contrast, saturation, blur, exposure } = adjustments;
-
-  let combined = filterStr;
-  if (brightness !== 100) combined += ` brightness(${brightness}%)`;
-  if (contrast !== 100) combined += ` contrast(${contrast}%)`;
-  if (saturation !== 100) combined += ` saturate(${saturation}%)`;
-  if (exposure !== 100) combined += ` brightness(${exposure * 0.5 + 50}%)`;
-  if (blur > 0) combined += ` blur(${blur}px)`;
-
-  ctx.filter = combined || 'none';
+  ctx.filter = buildPhotoFilter(filterId, intensity, adjustments);
 }
 
 function drawRoundedRect(
@@ -304,7 +291,7 @@ export async function renderComposition(state: EditorState, scale = 1): Promise<
       ctx.clip();
 
       // Apply filters
-      applyFilterToCanvas(ctx, filterId, filterIntensity, adjustments, rect.width, rect.height);
+      applyFilterToCanvas(ctx, filterId, filterIntensity, adjustments);
 
       // Draw image covering the rect (cover fit)
       const imgAspect = img.naturalWidth / img.naturalHeight;

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trash2, Copy, ArrowUp, ArrowDown } from 'lucide-react';
+import { Trash2, Copy, ArrowUp, ArrowDown, Search, Plus } from 'lucide-react';
 import { STICKERS, STICKER_CATEGORIES } from '../data/stickers';
 import type { StickerItem } from '../types';
 
@@ -20,19 +20,46 @@ export default function StickerPicker({
   onAdd, stickers, selectedId, onSelect, onDelete, onDuplicate, onBringForward, onSendBackward, onUpdate
 }: StickerPickerProps) {
   const [activeCategory, setActiveCategory] = useState('hearts');
+  const [query, setQuery] = useState('');
+  const [custom, setCustom] = useState('');
 
-  const filtered = STICKERS.filter(s => s.category === activeCategory);
+  const search = query.trim().toLowerCase();
+  const filtered = search
+    ? STICKERS.filter(s => s.label.toLowerCase().includes(search) || s.emoji.includes(search))
+    : STICKERS.filter(s => s.category === activeCategory);
   const selectedSticker = stickers.find(s => s.id === selectedId);
+
+  const addCustom = () => {
+    const emoji = custom.trim();
+    if (!emoji) return;
+    onAdd(emoji);
+    setCustom('');
+  };
 
   return (
     <div className="space-y-4">
+      {/* Search */}
+      <div className="relative">
+        <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+        <input
+          type="text"
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="Search stickers…"
+          className="input-base text-sm pl-9"
+        />
+      </div>
+
       {/* Category tabs */}
       <div className="flex gap-1 overflow-x-auto no-scrollbar pb-1">
         {STICKER_CATEGORIES.map(cat => (
           <button
             key={cat.id}
-            onClick={() => setActiveCategory(cat.id)}
-            className={`filter-chip whitespace-nowrap text-xs ${activeCategory === cat.id ? 'active' : ''}`}
+            onClick={() => {
+              setQuery('');
+              setActiveCategory(cat.id);
+            }}
+            className={`filter-chip whitespace-nowrap text-xs ${!search && activeCategory === cat.id ? 'active' : ''}`}
           >
             {cat.label}
           </button>
@@ -54,6 +81,33 @@ export default function StickerPicker({
           </motion.button>
         ))}
       </div>
+      {filtered.length === 0 && (
+        <p className="text-xs text-gray-400 text-center py-2">No sticker matches “{query}”.</p>
+      )}
+
+      {/* Custom emoji */}
+      <div>
+        <label className="text-xs text-gray-500 mb-1 block">Add any emoji</label>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={custom}
+            onChange={e => setCustom(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustom(); } }}
+            placeholder="Type or paste an emoji"
+            maxLength={8}
+            className="input-base text-sm"
+          />
+          <button
+            onClick={addCustom}
+            disabled={!custom.trim()}
+            className="btn-primary text-xs px-3 disabled:opacity-40"
+            title="Add emoji sticker"
+          >
+            <Plus className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
 
       {/* Placed stickers */}
       {stickers.length > 0 && (
@@ -70,7 +124,7 @@ export default function StickerPicker({
               >
                 <span className="text-xl flex-shrink-0">{sticker.emoji}</span>
                 <span className="text-xs text-gray-500 flex-1 truncate">
-                  {Math.round(sticker.x)}, {Math.round(sticker.y)}
+                  {Math.round(sticker.width)}px
                 </span>
                 <div className="flex gap-0.5">
                   <button
@@ -124,8 +178,8 @@ export default function StickerPicker({
               <input
                 type="range"
                 min={20}
-                max={300}
-                value={selectedSticker.width}
+                max={600}
+                value={Math.min(selectedSticker.width, 600)}
                 onChange={e => {
                   const size = Number(e.target.value);
                   onUpdate?.(selectedSticker.id, { width: size, height: size });

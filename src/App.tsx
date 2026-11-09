@@ -22,6 +22,8 @@ export default function App() {
     capturedPhotos: [],
     editorState: null,
     finalImageUrl: null,
+    resumeDraftId: null,
+    resumeEditorState: null,
   });
 
   const goHome = useCallback(() => setState(s => ({ ...s, step: 'home' })), []);
@@ -32,7 +34,24 @@ export default function App() {
   }, []);
 
   const goToEditor = useCallback((photos: string[]) => {
-    setState(s => ({ ...s, step: 'editor', capturedPhotos: photos }));
+    setState(s => ({
+      ...s,
+      step: 'editor',
+      capturedPhotos: photos,
+      resumeDraftId: null,
+      resumeEditorState: null,
+    }));
+  }, []);
+
+  const resumeDraft = useCallback((draftId: string, editorState: EditorState) => {
+    setState(s => ({
+      ...s,
+      step: 'editor',
+      selectedLayout: editorState.layout,
+      capturedPhotos: editorState.photos,
+      resumeDraftId: draftId,
+      resumeEditorState: editorState,
+    }));
   }, []);
 
   const goToDownload = useCallback((imageUrl: string) => {
@@ -61,7 +80,15 @@ export default function App() {
           : <LayoutPage key="layout" />;
       case 'editor':
         return state.selectedLayout
-          ? <EditorPage key="editor" layout={state.selectedLayout} photos={state.capturedPhotos} />
+          ? (
+            <EditorPage
+              key={`editor-${state.resumeDraftId ?? 'new'}`}
+              layout={state.selectedLayout}
+              photos={state.capturedPhotos}
+              initialState={state.resumeEditorState}
+              draftId={state.resumeDraftId}
+            />
+          )
           : <HomePage key="home" />;
       case 'download':
         return state.finalImageUrl
@@ -81,6 +108,7 @@ export default function App() {
       goToLayout,
       goToPhotobooth,
       goToEditor,
+      resumeDraft,
       goToDownload,
       goToGallery,
       setFinalImage,

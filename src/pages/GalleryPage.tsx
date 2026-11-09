@@ -1,22 +1,28 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Download, Trash2, X, Camera, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Download, Trash2, X, Camera, AlertTriangle, Pencil, Layers } from 'lucide-react';
 import { useApp } from '../store/appStore';
 import { getAllPhotos, deletePhoto, clearAllPhotos } from '../utils/galleryDb';
-import type { GalleryItem } from '../types';
+import { getAllDrafts, deleteDraft } from '../utils/draftDb';
+import type { GalleryItem, DraftItem } from '../types';
+
+type GalleryTab = 'photos' | 'drafts';
 
 export default function GalleryPage() {
-  const { goHome, goToLayout } = useApp();
+  const { goHome, goToLayout, resumeDraft } = useApp();
+  const [tab, setTab] = useState<GalleryTab>('photos');
   const [photos, setPhotos] = useState<GalleryItem[]>([]);
+  const [drafts, setDrafts] = useState<DraftItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPhoto, setSelectedPhoto] = useState<GalleryItem | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
-  const loadPhotos = useCallback(async () => {
+  const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const items = await getAllPhotos();
+      const [items, saved] = await Promise.all([getAllPhotos(), getAllDrafts()]);
       setPhotos(items);
+      setDrafts(saved);
     } catch (e) {
       console.error(e);
     } finally {
@@ -25,14 +31,19 @@ export default function GalleryPage() {
   }, []);
 
   useEffect(() => {
-    loadPhotos();
-  }, [loadPhotos]);
+    loadAll();
+  }, [loadAll]);
 
   const handleDelete = useCallback(async (id: string) => {
     await deletePhoto(id);
     setPhotos(prev => prev.filter(p => p.id !== id));
     if (selectedPhoto?.id === id) setSelectedPhoto(null);
   }, [selectedPhoto]);
+
+  const handleDeleteDraft = useCallback(async (id: string) => {
+    await deleteDraft(id);
+    setDrafts(prev => prev.filter(d => d.id !== id));
+  }, []);
 
   const handleClearAll = useCallback(async () => {
     await clearAllPhotos();
@@ -58,6 +69,11 @@ export default function GalleryPage() {
     });
   };
 
+  const tabs: { id: GalleryTab; label: string; count: number }[] = [
+    { id: 'photos', label: 'Creations', count: photos.length },
+    { id: 'drafts', label: 'Saved edits', count: drafts.length },
+  ];
+
   return (
     <div className="min-h-screen bg-gradient-soft">
       {/* Header */}
@@ -75,7 +91,7 @@ export default function GalleryPage() {
           My Gallery
         </div>
         <div className="flex items-center gap-2">
-          {photos.length > 0 && (
+          {tab === 'photos' && photos.length > 0 && (
             <button
               onClick={() => setShowClearConfirm(true)}
               className="text-sm text-gray-400 hover:text-red-400 transition-colors flex items-center gap-1"
@@ -100,13 +116,34 @@ export default function GalleryPage() {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
+          className="mb-6"
         >
           <h1 className="font-display text-3xl font-bold text-charcoal-800 mb-2">Your Photos</h1>
           <p className="text-gray-500">
-            {photos.length === 0 ? 'No photos yet' : `${photos.length} photo${photos.length !== 1 ? 's' : ''} saved`}
+            {tab === 'photos'
+              ? photos.length === 0
+                ? 'No photos yet'
+                : `${photos.length} photo${photos.length !== 1 ? 's' : ''} saved`
+              : drafts.length === 0
+                ? 'No saved edits yet'
+                : `${drafts.length} saved edit${drafts.length !== 1 ? 's' : ''} — photos you took, kept for later`}
           </p>
         </motion.div>
+
+        {/* Tabs */}
+        <div className="flex gap-2 mb-8">
+          {tabs.map(t => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`filter-chip text-sm flex items-center gap-1.5 ${tab === t.id ? 'active' : ''}`}
+            >
+              {t.id === 'drafts' ? <Layers className="w-3.5 h-3.5" /> : null}
+              {t.label}
+              <span className={`text-xs ${tab === t.id ? 'text-white/80' : 'text-gray-400'}`}>({t.count})</span>
+            </button>
+          ))}
+        </div>
 
         {loading ? (
           <div className="flex items-center justify-center py-20">
@@ -116,15 +153,79 @@ export default function GalleryPage() {
               className="w-10 h-10 border-2 border-blush-400 border-t-transparent rounded-full"
             />
           </div>
-        ) : photos.length === 0 ? (
+        ) : tab === 'photos' ? (
+          photos.length === 0 ? (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="text-center py-20"
+            >
+              <div className="text-6xl mb-4">📷</div>
+              <h3 className="font-display text-xl text-charcoal-800 mb-2">No photos yet</h3>
+              <p className="text-gray-400 mb-8">Start creating beautiful memories</p>
+              <motion.button
+                whileHover={{ scale: 1.04 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={goToLayout}
+                className="btn-primary"
+              >
+                <Camera className="w-4 h-4" />
+                Take Your First Photo
+              </motion.button>
+            </motion.div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+              {photos.map((photo, i) => (
+                <motion.div
+                  key={photo.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.05 }}
+                  className="group relative rounded-2xl overflow-hidden shadow-soft hover:shadow-medium transition-all cursor-pointer bg-white"
+                  onClick={() => setSelectedPhoto(photo)}
+                >
+                  <div className="aspect-[3/4] overflow-hidden">
+                    <img
+                      src={photo.thumbnail || photo.dataUrl}
+                      alt="Saved photo"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                  </div>
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={e => { e.stopPropagation(); handleDownload(photo); }}
+                        className="p-1.5 bg-white/20 backdrop-blur-sm text-white rounded-lg hover:bg-white/30 transition-all"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={e => { e.stopPropagation(); handleDelete(photo.id); }}
+                        className="p-1.5 bg-red-500/80 text-white rounded-lg hover:bg-red-500 transition-all"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="p-3">
+                    <div className="text-xs text-gray-400">{photo.layout}</div>
+                    <div className="text-xs text-gray-300">{formatDate(photo.createdAt)}</div>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          )
+        ) : drafts.length === 0 ? (
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             className="text-center py-20"
           >
-            <div className="text-6xl mb-4">📷</div>
-            <h3 className="font-display text-xl text-charcoal-800 mb-2">No photos yet</h3>
-            <p className="text-gray-400 mb-8">Start creating beautiful memories</p>
+            <div className="text-6xl mb-4">💾</div>
+            <h3 className="font-display text-xl text-charcoal-800 mb-2">No saved edits yet</h3>
+            <p className="text-gray-400 mb-8 max-w-sm mx-auto">
+              Photos you take are saved here automatically, with your stickers and edits — so you can come back and keep working.
+            </p>
             <motion.button
               whileHover={{ scale: 1.04 }}
               whileTap={{ scale: 0.97 }}
@@ -132,46 +233,49 @@ export default function GalleryPage() {
               className="btn-primary"
             >
               <Camera className="w-4 h-4" />
-              Take Your First Photo
+              Start a Photo Session
             </motion.button>
           </motion.div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-            {photos.map((photo, i) => (
+            {drafts.map((draft, i) => (
               <motion.div
-                key={photo.id}
+                key={draft.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.05 }}
-                className="group relative rounded-2xl overflow-hidden shadow-soft hover:shadow-medium transition-all cursor-pointer bg-white"
-                onClick={() => setSelectedPhoto(photo)}
+                className="group rounded-2xl overflow-hidden shadow-soft hover:shadow-medium transition-all bg-white"
               >
-                <div className="aspect-[3/4] overflow-hidden">
-                  <img
-                    src={photo.thumbnail || photo.dataUrl}
-                    alt="Saved photo"
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                  />
+                <div className="aspect-[3/4] overflow-hidden bg-gray-50">
+                  {draft.thumbnail ? (
+                    <img
+                      src={draft.thumbnail}
+                      alt={`${draft.layoutName} edit`}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-4xl">🖼️</div>
+                  )}
                 </div>
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3">
-                  <div className="flex items-center gap-2">
+                <div className="p-3">
+                  <div className="text-xs text-gray-500">{draft.layoutName} · {draft.photoCount} photo{draft.photoCount !== 1 ? 's' : ''}</div>
+                  <div className="text-xs text-gray-300 mb-2">{formatDate(draft.savedAt)}</div>
+                  <div className="flex gap-2">
                     <button
-                      onClick={e => { e.stopPropagation(); handleDownload(photo); }}
-                      className="p-1.5 bg-white/20 backdrop-blur-sm text-white rounded-lg hover:bg-white/30 transition-all"
+                      onClick={() => resumeDraft(draft.id, draft.state)}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-semibold text-white bg-blush-400 hover:bg-blush-500 rounded-lg transition-all"
                     >
-                      <Download className="w-3.5 h-3.5" />
+                      <Pencil className="w-3 h-3" />
+                      Continue
                     </button>
                     <button
-                      onClick={e => { e.stopPropagation(); handleDelete(photo.id); }}
-                      className="p-1.5 bg-red-500/80 text-white rounded-lg hover:bg-red-500 transition-all"
+                      onClick={() => handleDeleteDraft(draft.id)}
+                      className="p-1.5 text-gray-400 hover:text-red-400 border border-gray-200 rounded-lg transition-all"
+                      title="Delete saved edit"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
-                </div>
-                <div className="p-3">
-                  <div className="text-xs text-gray-400">{photo.layout}</div>
-                  <div className="text-xs text-gray-300">{formatDate(photo.createdAt)}</div>
                 </div>
               </motion.div>
             ))}

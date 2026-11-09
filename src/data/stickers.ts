@@ -15,6 +15,8 @@ export const STICKER_CATEGORIES = [
   { id: 'food', label: '🍓 Food' },
   { id: 'faces', label: '😊 Faces' },
   { id: 'retro', label: '📷 Retro' },
+  { id: 'summer', label: '🌴 Summer' },
+  { id: 'y2k', label: '💿 Y2K' },
   { id: 'misc', label: '🎉 Fun' },
 ];
 
@@ -126,6 +128,30 @@ export const STICKERS: StickerData[] = [
   { id: 's88', emoji: '📞', category: 'retro', label: 'Phone' },
   { id: 's89', emoji: '🖼️', category: 'retro', label: 'Frame' },
   { id: 's90', emoji: '✉️', category: 'retro', label: 'Letter' },
+
+  // Summer
+  { id: 's101', emoji: '🌴', category: 'summer', label: 'Palm Tree' },
+  { id: 's102', emoji: '🌊', category: 'summer', label: 'Ocean' },
+  { id: 's103', emoji: '🍉', category: 'summer', label: 'Watermelon' },
+  { id: 's104', emoji: '🕶️', category: 'summer', label: 'Sunglasses' },
+  { id: 's105', emoji: '🏖️', category: 'summer', label: 'Beach' },
+  { id: 's106', emoji: '🐚', category: 'summer', label: 'Shell' },
+  { id: 's107', emoji: '🍹', category: 'summer', label: 'Tropical Drink' },
+  { id: 's108', emoji: '⛱️', category: 'summer', label: 'Umbrella' },
+  { id: 's109', emoji: '🩴', category: 'summer', label: 'Flip Flops' },
+  { id: 's110', emoji: '🌅', category: 'summer', label: 'Sunset' },
+
+  // Y2K
+  { id: 's111', emoji: '💿', category: 'y2k', label: 'CD' },
+  { id: 's112', emoji: '📀', category: 'y2k', label: 'DVD' },
+  { id: 's113', emoji: '🎧', category: 'y2k', label: 'Headphones' },
+  { id: 's114', emoji: '💅', category: 'y2k', label: 'Nails' },
+  { id: 's115', emoji: '🦋', category: 'y2k', label: 'Butterfly' },
+  { id: 's116', emoji: '🪩', category: 'y2k', label: 'Disco Ball' },
+  { id: 's117', emoji: '📱', category: 'y2k', label: 'Flip Phone' },
+  { id: 's118', emoji: '💖', category: 'y2k', label: 'Pixel Heart' },
+  { id: 's119', emoji: '🕶️', category: 'y2k', label: 'Shades' },
+  { id: 's120', emoji: '⭐', category: 'y2k', label: 'Star' },
 
   // Misc Fun
   { id: 's91', emoji: '🎭', category: 'misc', label: 'Theatre' },

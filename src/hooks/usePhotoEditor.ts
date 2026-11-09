@@ -46,8 +46,10 @@ function snapshotHistory(state: EditorState): HistoryEntry {
   };
 }
 
-export function usePhotoEditor(layout: Layout, photos: string[]) {
-  const [state, setState] = useState<EditorState>(() => createInitialState(layout, photos));
+export function usePhotoEditor(layout: Layout, photos: string[], initialState?: EditorState | null) {
+  const [state, setState] = useState<EditorState>(() =>
+    initialState ? { ...initialState } : createInitialState(layout, photos)
+  );
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [future, setFuture] = useState<HistoryEntry[]>([]);
 
@@ -60,12 +62,13 @@ export function usePhotoEditor(layout: Layout, photos: string[]) {
   const addSticker = useCallback((emoji: string) => {
     setState(prev => {
       pushHistory(prev);
+      const size = Math.round(Math.min(prev.layout.canvasWidth, prev.layout.canvasHeight) * 0.18);
       const newSticker: StickerItem = {
         id: `sticker-${Date.now()}`,
-        x: 50 + Math.random() * 200,
-        y: 50 + Math.random() * 200,
-        width: 80,
-        height: 80,
+        x: prev.layout.canvasWidth / 2 - size / 2 + (Math.random() - 0.5) * size,
+        y: prev.layout.canvasHeight / 2 - size / 2 + (Math.random() - 0.5) * size,
+        width: size,
+        height: size,
         rotation: (Math.random() - 0.5) * 20,
         emoji,
         zIndex: prev.stickers.length + prev.texts.length + 1,
@@ -137,10 +140,10 @@ export function usePhotoEditor(layout: Layout, photos: string[]) {
       const newText: TextItem = {
         id: `text-${Date.now()}`,
         text: 'Your text here',
-        x: 100,
-        y: 100,
-        width: 300,
-        fontSize: 32,
+        x: Math.round(prev.layout.canvasWidth * 0.1),
+        y: Math.round(prev.layout.canvasHeight * 0.1),
+        width: Math.round(prev.layout.canvasWidth * 0.8),
+        fontSize: Math.round(prev.layout.canvasWidth * 0.04),
         fontFamily: 'Inter',
         color: '#1A1A1A',
         bold: false,

@@ -7,6 +7,7 @@ export interface AppContextType {
   goToLayout: () => void;
   goToPhotobooth: (layout: Layout) => void;
   goToEditor: (photos: string[]) => void;
+  resumeDraft: (draftId: string, editorState: EditorState) => void;
   goToDownload: (imageUrl: string) => void;
   goToGallery: () => void;
   setFinalImage: (url: string) => void;

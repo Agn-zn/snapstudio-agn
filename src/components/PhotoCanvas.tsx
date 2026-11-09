@@ -1,16 +1,41 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import type { EditorState, StickerItem, TextItem } from '../types';
-import { FILTERS } from '../data/filters';
+import { buildPhotoFilter } from '../utils/filterUtils';
 
-interface DragState {
-  type: 'sticker' | 'text';
+type ItemType = 'sticker' | 'text';
+
+interface DragGesture {
+  kind: 'drag';
+  type: ItemType;
   id: string;
   startX: number;
   startY: number;
   origX: number;
   origY: number;
 }
+
+interface ResizeGesture {
+  kind: 'resize';
+  type: ItemType;
+  id: string;
+  startX: number;
+  startY: number;
+  startSize: number;
+  startFontSize: number;
+}
+
+interface RotateGesture {
+  kind: 'rotate';
+  type: ItemType;
+  id: string;
+  centerX: number;
+  centerY: number;
+  startAngle: number;
+  startRotation: number;
+}
+
+type Gesture = DragGesture | ResizeGesture | RotateGesture;
 
 interface Props {
   state: EditorState;
@@ -20,6 +45,8 @@ interface Props {
   onSelectText: (id: string | null) => void;
   onUpdateSticker: (id: string, updates: Partial<StickerItem>) => void;
   onUpdateText: (id: string, updates: Partial<TextItem>) => void;
+  onDeleteSticker: (id: string) => void;
+  onDeleteText: (id: string) => void;
 }
 
 // Compute the display canvas size maintaining aspect ratio
@@ -59,11 +86,6 @@ function getBackgroundStyle(bg: EditorState['background']): React.CSSProperties 
     return patternStyles[bg.value] ?? { background: '#FDFAF6' };
   }
   return { background: '#FFFFFF' };
-}
-
-function getCssFilter(filterId: string): string {
-  const filter = FILTERS.find(f => f.id === filterId);
-  return filter?.cssFilter ?? 'none';
 }
 
 function getPhotoRects(layoutId: string, W: number, H: number, photoCount: number) {
@@ -130,13 +152,22 @@ function getPhotoRects(layoutId: string, W: number, H: number, photoCount: numbe
   }
 }
 
-export default function PhotoCanvas({ state, selectedStickerId, selectedTextId,
-  onSelectSticker, onSelectText, onUpdateSticker, onUpdateText }: Props) {
+export default function PhotoCanvas({
+  state,
+  selectedStickerId,
+  selectedTextId,
+  onSelectSticker,
+  onSelectText,
+  onUpdateSticker,
+  onUpdateText,
+  onDeleteSticker,
+  onDeleteText,
+}: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const gestureRef = useRef<Gesture | null>(null);
   const [displaySize, setDisplaySize] = useState({ width: 500, height: 600, scale: 0.4 });
-  const dragRef = useRef<DragState | null>(null);
 
-  const { layout, photos, background, frame, filterId, stickers, texts, adjustments } = state;
+  const { layout, photos, background, frame, filterId, filterIntensity, stickers, texts, adjustments } = state;
   const W = layout.canvasWidth;
   const H = layout.canvasHeight;
 
@@ -149,7 +180,6 @@ export default function PhotoCanvas({ state, selectedStickerId, selectedTextId,
       setDisplaySize(computeDisplaySize(W, H, rect.width - padding, rect.height - padding));
     });
     observer.observe(el);
-    // Initial
     const rect = el.getBoundingClientRect();
     const padding = 48;
     setDisplaySize(computeDisplaySize(W, H, rect.width - padding, rect.height - padding));
@@ -157,48 +187,147 @@ export default function PhotoCanvas({ state, selectedStickerId, selectedTextId,
   }, [W, H]);
 
   const photoRects = getPhotoRects(layout.id, displaySize.width, displaySize.height, photos.length);
+  const filterStr = buildPhotoFilter(filterId, filterIntensity, adjustments);
 
-  const getFilterStr = useCallback(() => {
-    const f = getCssFilter(filterId);
-    const { brightness, contrast, saturation, blur } = adjustments;
-    let combined = '';
-    if (brightness !== 100) combined += ` brightness(${brightness}%)`;
-    if (contrast !== 100) combined += ` contrast(${contrast}%)`;
-    if (saturation !== 100) combined += ` saturate(${saturation}%)`;
-    if (blur > 0) combined += ` blur(${blur}px)`;
-    if (f !== 'none') combined = `${f}${combined}`;
-    return combined || 'none';
-  }, [filterId, adjustments]);
-
-  // Drag handlers
-  const handleMouseDown = useCallback((e: React.MouseEvent, type: 'sticker' | 'text', id: string, origX: number, origY: number) => {
-    e.preventDefault();
+  // ─── Gestures ──────────────────────────────────────────────────────────────
+  const beginDrag = useCallback((e: React.PointerEvent, type: ItemType, id: string, origX: number, origY: number) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
     e.stopPropagation();
     if (type === 'sticker') onSelectSticker(id);
     else onSelectText(id);
-    dragRef.current = { type, id, startX: e.clientX, startY: e.clientY, origX, origY };
+    gestureRef.current = { kind: 'drag', type, id, startX: e.clientX, startY: e.clientY, origX, origY };
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {
+      // Pointer capture is best-effort; the gesture already tracks moves on the canvas.
+    }
   }, [onSelectSticker, onSelectText]);
 
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!dragRef.current) return;
-    const { type, id, startX, startY, origX, origY } = dragRef.current;
-    const dx = (e.clientX - startX) / displaySize.scale;
-    const dy = (e.clientY - startY) / displaySize.scale;
-    if (type === 'sticker') onUpdateSticker(id, { x: origX + dx, y: origY + dy });
-    else onUpdateText(id, { x: origX + dx, y: origY + dy });
+  const beginResize = useCallback((e: React.PointerEvent, type: ItemType, id: string, startSize: number, startFontSize: number) => {
+    e.stopPropagation();
+    e.preventDefault();
+    gestureRef.current = {
+      kind: 'resize', type, id,
+      startX: e.clientX, startY: e.clientY,
+      startSize, startFontSize,
+    };
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {
+      // Best-effort, see beginDrag.
+    }
+  }, []);
+
+  const beginRotate = useCallback((e: React.PointerEvent, type: ItemType, id: string, startRotation: number) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const itemEl = (e.currentTarget as HTMLElement).closest('[data-item]') as HTMLElement | null;
+    const rect = itemEl?.getBoundingClientRect();
+    const centerX = rect ? rect.left + rect.width / 2 : e.clientX;
+    const centerY = rect ? rect.top + rect.height / 2 : e.clientY;
+    gestureRef.current = {
+      kind: 'rotate', type, id, centerX, centerY,
+      startAngle: (Math.atan2(e.clientY - centerY, e.clientX - centerX) * 180) / Math.PI,
+      startRotation,
+    };
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {
+      // Best-effort, see beginDrag.
+    }
+  }, []);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    const gesture = gestureRef.current;
+    if (!gesture) return;
+
+    if (gesture.kind === 'drag') {
+      const dx = (e.clientX - gesture.startX) / displaySize.scale;
+      const dy = (e.clientY - gesture.startY) / displaySize.scale;
+      if (gesture.type === 'sticker') {
+        onUpdateSticker(gesture.id, { x: gesture.origX + dx, y: gesture.origY + dy });
+      } else {
+        onUpdateText(gesture.id, { x: gesture.origX + dx, y: gesture.origY + dy });
+      }
+    } else if (gesture.kind === 'resize') {
+      const dx = (e.clientX - gesture.startX) / displaySize.scale;
+      const dy = (e.clientY - gesture.startY) / displaySize.scale;
+      if (gesture.type === 'sticker') {
+        const size = Math.min(900, Math.max(20, gesture.startSize + Math.max(dx, dy)));
+        onUpdateSticker(gesture.id, { width: size, height: size });
+      } else {
+        const fontSize = Math.min(240, Math.max(8, gesture.startFontSize + Math.max(dx, dy) * 0.8));
+        onUpdateText(gesture.id, { fontSize: Math.round(fontSize) });
+      }
+    } else {
+      const angle = (Math.atan2(e.clientY - gesture.centerY, e.clientX - gesture.centerX) * 180) / Math.PI;
+      let rotation = Math.round(gesture.startRotation + angle - gesture.startAngle);
+      rotation = (((rotation + 180) % 360) + 360) % 360 - 180;
+      if (gesture.type === 'sticker') {
+        onUpdateSticker(gesture.id, { rotation });
+      } else {
+        onUpdateText(gesture.id, { rotation });
+      }
+    }
   }, [displaySize.scale, onUpdateSticker, onUpdateText]);
 
-  const handleMouseUp = useCallback(() => {
-    dragRef.current = null;
+  const endGesture = useCallback((e: React.PointerEvent) => {
+    const el = e.currentTarget as HTMLElement;
+    try {
+      if (el.hasPointerCapture?.(e.pointerId)) el.releasePointerCapture(e.pointerId);
+    } catch {
+      // Ignore: the pointer may already be released.
+    }
+    gestureRef.current = null;
   }, []);
 
   const handleCanvasClick = useCallback((e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).dataset.item) return;
+    if ((e.target as HTMLElement).closest('[data-item]')) return;
     onSelectSticker(null);
     onSelectText(null);
   }, [onSelectSticker, onSelectText]);
 
-  const filterStr = getFilterStr();
+  const renderHandles = (type: ItemType, id: string, rotation: number, size: number, fontSize: number) => (
+    <>
+      <div
+        onPointerDown={e => beginRotate(e, type, id, rotation)}
+        title="Rotate"
+        style={{
+          position: 'absolute', top: -34, left: '50%', width: 18, height: 18, marginLeft: -9,
+          borderRadius: '50%', background: '#fff', border: '2px solid #FF85A1',
+          boxShadow: '0 2px 6px rgba(0,0,0,0.25)', cursor: 'grab', touchAction: 'none', zIndex: 2,
+        }}
+      >
+        <span style={{ position: 'absolute', top: '100%', left: '50%', width: 2, height: 14, marginLeft: -1, background: '#FF85A1' }} />
+      </div>
+      <div
+        onPointerDown={e => beginResize(e, type, id, size, fontSize)}
+        title="Resize"
+        style={{
+          position: 'absolute', bottom: -9, right: -9, width: 20, height: 20, borderRadius: 6,
+          background: '#fff', border: '2px solid #FF85A1', boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
+          cursor: 'nwse-resize', touchAction: 'none', zIndex: 2,
+        }}
+      />
+      <button
+        onPointerDown={e => e.stopPropagation()}
+        onClick={e => {
+          e.stopPropagation();
+          if (type === 'sticker') onDeleteSticker(id);
+          else onDeleteText(id);
+        }}
+        title="Remove"
+        style={{
+          position: 'absolute', top: -34, right: -30, width: 22, height: 22, padding: 0,
+          borderRadius: '50%', background: '#ef4444', color: '#fff', fontSize: 14, lineHeight: '18px',
+          textAlign: 'center', border: '2px solid #fff', boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
+          cursor: 'pointer', zIndex: 2,
+        }}
+      >
+        ×
+      </button>
+    </>
+  );
 
   return (
     <div ref={containerRef} className="relative select-none">
@@ -210,11 +339,12 @@ export default function PhotoCanvas({ state, selectedStickerId, selectedTextId,
         style={{
           width: displaySize.width,
           height: displaySize.height,
+          touchAction: 'none',
           ...getBackgroundStyle(background),
         }}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
+        onPointerMove={handlePointerMove}
+        onPointerUp={endGesture}
+        onPointerCancel={endGesture}
         onClick={handleCanvasClick}
       >
         {/* Film strip decoration */}
@@ -298,27 +428,35 @@ export default function PhotoCanvas({ state, selectedStickerId, selectedTextId,
           const scaledY = sticker.y * displaySize.scale;
 
           return (
-            <motion.div
+            <div
               key={sticker.id}
               data-item="sticker"
-              className={`absolute cursor-move flex items-center justify-center ${isSelected ? 'sticker-selected' : ''}`}
+              onPointerDown={e => beginDrag(e, 'sticker', sticker.id, sticker.x, sticker.y)}
+              onClick={e => { e.stopPropagation(); onSelectSticker(sticker.id); }}
               style={{
+                position: 'absolute',
                 left: scaledX,
                 top: scaledY,
                 width: scaledW,
                 height: scaledH,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
                 transform: `rotate(${sticker.rotation}deg)`,
                 transformOrigin: 'center',
                 fontSize: scaledW * 0.85,
                 lineHeight: 1,
                 zIndex: sticker.zIndex + 10,
                 userSelect: 'none',
+                cursor: 'move',
+                touchAction: 'none',
+                outline: isSelected ? '2px dashed #FF85A1' : 'none',
+                outlineOffset: 2,
               }}
-              onMouseDown={(e) => handleMouseDown(e, 'sticker', sticker.id, sticker.x, sticker.y)}
-              whileHover={{ scale: 1.05 }}
             >
               {sticker.emoji}
-            </motion.div>
+              {isSelected && renderHandles('sticker', sticker.id, sticker.rotation, sticker.width, 0)}
+            </div>
           );
         })}
 
@@ -331,16 +469,18 @@ export default function PhotoCanvas({ state, selectedStickerId, selectedTextId,
           const scaledFontSize = textItem.fontSize * displaySize.scale;
 
           return (
-            <motion.div
+            <div
               key={textItem.id}
               data-item="text"
-              className={`absolute cursor-move ${isSelected ? 'sticker-selected' : ''}`}
+              onPointerDown={e => beginDrag(e, 'text', textItem.id, textItem.x, textItem.y)}
+              onClick={e => { e.stopPropagation(); onSelectText(textItem.id); }}
               style={{
+                position: 'absolute',
                 left: scaledX,
                 top: scaledY,
                 width: scaledW,
                 transform: `rotate(${textItem.rotation}deg)`,
-                transformOrigin: 'top left',
+                transformOrigin: 'center',
                 zIndex: textItem.zIndex + 10,
                 fontFamily: `"${textItem.fontFamily}", sans-serif`,
                 fontSize: scaledFontSize,
@@ -350,12 +490,16 @@ export default function PhotoCanvas({ state, selectedStickerId, selectedTextId,
                 textAlign: textItem.align,
                 whiteSpace: 'nowrap',
                 textShadow: '0 1px 3px rgba(0,0,0,0.15)',
+                userSelect: 'none',
+                cursor: 'move',
+                touchAction: 'none',
+                outline: isSelected ? '2px dashed #FF85A1' : 'none',
+                outlineOffset: 2,
               }}
-              onMouseDown={(e) => handleMouseDown(e, 'text', textItem.id, textItem.x, textItem.y)}
-              whileHover={{ scale: 1.02 }}
             >
               {textItem.text}
-            </motion.div>
+              {isSelected && renderHandles('text', textItem.id, textItem.rotation, 0, textItem.fontSize)}
+            </div>
           );
         })}
       </motion.div>
